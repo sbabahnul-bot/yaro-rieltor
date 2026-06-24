@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Агентура — AI-помощник для риелторов</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:          #020610;
+      --surface:     #070e1e;
+      --surface-2:   #0c1428;
+      --accent:      #06b6d4;
+      --accent-dim:  rgba(6, 182, 212, 0.14);
+      --green:       #22c55e;
+      --green-dim:   rgba(34, 197, 94, 0.12);
+      --text:        #edf2f7;
+      --text-2:      #7b92a8;
+      --border:      rgba(255,255,255,0.07);
+      --radius:      16px;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    #stars-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+
+    .nebula { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .nebula-blob { position: absolute; border-radius: 50%; filter: blur(80px); }
+    .nb1 { width: 700px; height: 700px; top: -200px; right: -150px;
+      background: radial-gradient(circle, rgba(6,182,212,0.10) 0%, transparent 65%);
+      animation: drift 18s ease-in-out infinite alternate; }
+    .nb2 { width: 600px; height: 600px; bottom: 5%; left: -150px;
+      background: radial-gradient(circle, rgba(29,78,216,0.12) 0%, transparent 65%);
+      animation: drift 22s ease-in-out infinite alternate-reverse; }
+    .nb3 { width: 400px; height: 400px; top: 40%; left: 40%;
+      background: radial-gradient(circle, rgba(6,182,212,0.06) 0%, transparent 65%);
+      animation: drift 15s ease-in-out infinite alternate; }
+    @keyframes drift {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(30px, 20px) scale(1.08); }
+    }
+
+    /* NAV */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200; height: 66px;
+      display: flex; align-items: center; padding: 0 40px;
+      background: rgba(7, 9, 15, 0.82);
+      backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1100px; width: 100%; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo { font-size: 18px; font-weight: 800; color: var(--text); text-decoration: none; letter-spacing: -0.02em; }
+    .nav-logo em { color: var(--accent); font-style: normal; }
+    .btn-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--accent); color: #07090f;
+      font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 700;
+      padding: 9px 22px; border-radius: 999px; text-decoration: none;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn-pill:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(6,182,212,0.35); }
+
+    /* WRAP */
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 0 40px; position: relative; z-index: 1; }
+
+    /* HERO */
+    .hero {
+      position: relative; z-index: 1;
+      min-height: 100dvh;
+      display: flex; align-items: center; justify-content: center;
+      text-align: center;
+      padding: 120px 20px 80px;
+    }
+    .hero-inner { max-width: 760px; }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; color: var(--accent); letter-spacing: 0.07em;
+      margin-bottom: 32px;
+    }
+    .hero-eyebrow::before {
+      content: ''; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent); animation: blink 2.4s ease-in-out infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    .hero-headline {
+      font-size: clamp(40px, 5.5vw, 72px); font-weight: 800;
+      line-height: 1.05; letter-spacing: -0.035em; margin-bottom: 24px;
+    }
+    .hero-headline .hi { color: var(--accent); }
+    .hero-sub {
+      font-size: 18px; color: var(--text-2); line-height: 1.65;
+      max-width: 560px; margin: 0 auto 44px; font-weight: 400;
+    }
+    .hero-cta-row { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; }
+    .btn-hero {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: var(--accent); color: #07090f;
+      font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 700;
+      padding: 15px 34px; border-radius: 999px; text-decoration: none;
+      transition: transform 0.15s ease, box-shadow 0.15s ease; white-space: nowrap;
+    }
+    .btn-hero:hover { transform: translateY(-2px); box-shadow: 0 10px 36px rgba(6,182,212,0.38); }
+    .btn-hero-outline {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: transparent; color: var(--text);
+      font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 600;
+      padding: 14px 34px; border-radius: 999px; text-decoration: none;
+      border: 1px solid var(--border);
+      transition: border-color 0.15s ease, background 0.15s ease;
+      white-space: nowrap;
+    }
+    .btn-hero-outline:hover { border-color: var(--accent); background: var(--accent-dim); }
+
+    /* PROBLEM */
+    .problem-section { padding: 100px 0; }
+    .section-kicker {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      color: var(--accent); letter-spacing: 0.1em; margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: clamp(28px, 3vw, 42px); font-weight: 800;
+      letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 20px;
+    }
+    .section-sub { font-size: 17px; color: var(--text-2); max-width: 560px; line-height: 1.65; }
+
+    .problem-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+      margin-top: 60px;
+    }
+    .problem-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 32px;
+    }
+    .problem-icon { font-size: 32px; margin-bottom: 16px; }
+    .problem-title { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
+    .problem-text { font-size: 15px; color: var(--text-2); line-height: 1.6; }
+
+    /* HOW IT WORKS */
+    .how-section { padding: 100px 0; border-top: 1px solid var(--border); }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 60px; }
+    .step {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 36px 28px;
+      position: relative; overflow: hidden;
+    }
+    .step::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: var(--accent); opacity: 0.5;
+    }
+    .step-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; color: var(--accent); letter-spacing: 0.1em;
+      margin-bottom: 20px;
+    }
+    .step-title { font-size: 19px; font-weight: 700; margin-bottom: 12px; line-height: 1.25; }
+    .step-text { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+    /* FEATURES */
+    .features-section { padding: 100px 0; border-top: 1px solid var(--border); }
+    .features-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 60px; }
+    .feature-row {
+      display: flex; align-items: flex-start; gap: 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px;
+    }
+    .feature-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: var(--accent-dim); border: 1px solid rgba(6,182,212,0.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+    }
+    .feature-name { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+    .feature-desc { font-size: 14px; color: var(--text-2); line-height: 1.55; }
+
+    /* PRICING */
+    .pricing-section { padding: 100px 0; border-top: 1px solid var(--border); }
+    .pricing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 60px; max-width: 760px; }
+    .price-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 36px; position: relative;
+    }
+    .price-card.featured {
+      border-color: rgba(6,182,212,0.4);
+      background: linear-gradient(135deg, var(--surface) 0%, rgba(6,182,212,0.04) 100%);
+    }
+    .price-badge {
+      position: absolute; top: -1px; right: 24px;
+      background: var(--accent); color: #07090f;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+      padding: 4px 12px; border-radius: 0 0 8px 8px;
+    }
+    .price-name { font-size: 14px; color: var(--text-2); font-weight: 600; margin-bottom: 16px; }
+    .price-val { font-size: 48px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; margin-bottom: 4px; }
+    .price-val em { font-size: 18px; font-style: normal; color: var(--text-2); font-weight: 400; }
+    .price-period { font-size: 14px; color: var(--text-2); margin-bottom: 28px; }
+    .price-features { list-style: none; margin-bottom: 32px; }
+    .price-features li {
+      font-size: 15px; color: var(--text-2); padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .price-features li::before { content: '✓'; color: var(--green); font-weight: 700; flex-shrink: 0; }
+    .price-features li:last-child { border-bottom: none; }
+    .btn-price {
+      display: block; text-align: center;
+      background: var(--accent); color: #07090f;
+      font-family: 'Outfit', sans-serif; font-size: 15px; font-weight: 700;
+      padding: 13px 24px; border-radius: 999px; text-decoration: none;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn-price:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(6,182,212,0.35); }
+    .btn-price-outline {
+      display: block; text-align: center;
+      background: transparent; color: var(--text);
+      font-family: 'Outfit', sans-serif; font-size: 15px; font-weight: 600;
+      padding: 12px 24px; border-radius: 999px; text-decoration: none;
+      border: 1px solid var(--border);
+      transition: border-color 0.15s ease;
+    }
+    .btn-price-outline:hover { border-color: var(--accent); }
+
+    /* CTA */
+    .cta-section {
+      padding: 100px 40px; text-align: center;
+      border-top: 1px solid var(--border);
+      position: relative; z-index: 1;
+    }
+    .cta-head { font-size: clamp(30px, 3.5vw, 48px); font-weight: 800; letter-spacing: -0.03em; margin-bottom: 16px; }
+    .cta-sub { font-size: 17px; color: var(--text-2); max-width: 480px; margin: 0 auto 40px; line-height: 1.65; }
+
+    /* STATS */
+    .stats-strip {
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      padding: 0; position: relative; z-index: 1;
+    }
+    .stats-inner { max-width: 1100px; margin: 0 auto; padding: 0 40px; display: flex; }
+    .stat {
+      flex: 1; padding: 36px 24px; text-align: center;
+      border-right: 1px solid var(--border);
+    }
+    .stat:last-child { border-right: none; }
+    .stat-val { font-size: 36px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
+    .stat-val em { color: var(--accent); font-style: normal; }
+    .stat-lbl { font-size: 13px; color: var(--text-2); margin-top: 6px; line-height: 1.4; }
+
+    /* FOOTER */
+    footer {
+      padding: 32px 40px; text-align: center;
+      border-top: 1px solid var(--border);
+      font-size: 13px; color: var(--text-2);
+      position: relative; z-index: 1;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+
+    /* ANIMATE */
+    .r { opacity: 0; transform: translateY(22px); transition: opacity 0.55s ease, transform 0.55s ease; }
+    .r.vis { opacity: 1; transform: none; }
+    .d1 { transition-delay: 0.08s; }
+    .d2 { transition-delay: 0.16s; }
+    .d3 { transition-delay: 0.24s; }
+    .d4 { transition-delay: 0.32s; }
+
+    /* MOBILE */
+    @media (max-width: 768px) {
+      nav { padding: 0 20px; }
+      .problem-grid, .steps, .features-grid { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; max-width: 100%; }
+      .stats-inner { flex-direction: column; }
+      .stat { border-right: none; border-bottom: 1px solid var(--border); }
+      .stat:last-child { border-bottom: none; }
+      .wrap { padding: 0 20px; }
+      .problem-section, .how-section, .features-section, .pricing-section { padding: 70px 0; }
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="stars-canvas"></canvas>
+<div class="nebula">
+  <div class="nebula-blob nb1"></div>
+  <div class="nebula-blob nb2"></div>
+  <div class="nebula-blob nb3"></div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">Агент<em>ура</em></a>
+    <a href="https://t.me/sbahmetev" target="_blank" class="btn-pill">Попробовать →</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-inner">
+    <div class="hero-eyebrow r">AI-помощник для риелторов</div>
+    <h1 class="hero-headline r d1">
+      Клиент не пропадёт.<br>
+      Даже через <span class="hi">3 месяца</span>.
+    </h1>
+    <p class="hero-sub r d2">
+      Агентура сама поддерживает контакт с твоими клиентами пока идёт долгий цикл сделки. Ты узнаёшь когда клиент готов — и звонишь в нужный момент.
+    </p>
+    <div class="hero-cta-row r d3">
+      <a href="https://t.me/sbahmetev" target="_blank" class="btn-hero">Начать бесплатно →</a>
+      <a href="#how" class="btn-hero-outline">Как это работает</a>
+    </div>
+  </div>
+</div>
+
+<!-- PROBLEM -->
+<section class="problem-section">
+  <div class="wrap">
+    <p class="section-kicker r">ПРОБЛЕМА</p>
+    <h2 class="section-title r d1">Почему риелторы теряют клиентов</h2>
+    <p class="section-sub r d2">Сделка с недвижимостью длится 3–6 месяцев. За это время клиент остывает, уходит к конкурентам или вообще передумывает.</p>
+
+    <div class="problem-grid">
+      <div class="problem-card r d1">
+        <div class="problem-icon">📵</div>
+        <div class="problem-title">Клиент замолкает</div>
+        <div class="problem-text">Посмотрел варианты, сказал "подумаю" — и пропал. Ты не знаешь: передумал, нашёл другого или просто занят.</div>
+      </div>
+      <div class="problem-card r d2">
+        <div class="problem-icon">📞</div>
+        <div class="problem-title">Звонить неловко</div>
+        <div class="problem-text">Звонить раз в месяц — навязчиво. Не звонить — потеряешь. Золотой середины нет, и ты выбираешь молчать.</div>
+      </div>
+      <div class="problem-card r d3">
+        <div class="problem-icon">🏃</div>
+        <div class="problem-title">Уходит к конкуренту</div>
+        <div class="problem-text">Другой риелтор оказался рядом в нужный момент. Не потому что лучше — просто не забывал о клиенте.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW -->
+<section class="how-section" id="how">
+  <div class="wrap">
+    <p class="section-kicker r">КАК РАБОТАЕТ</p>
+    <h2 class="section-title r d1">Три шага — и Агентура работает</h2>
+
+    <div class="steps">
+      <div class="step r d1">
+        <div class="step-num">01 / ДОБАВИТЬ</div>
+        <div class="step-title">Добавляешь клиента в бот</div>
+        <div class="step-text">Имя, бюджет, район, пожелания. Бот генерирует персональную ссылку для клиента — отправляешь ему в мессенджер.</div>
+      </div>
+      <div class="step r d2">
+        <div class="step-num">02 / ОБЩЕНИЕ</div>
+        <div class="step-title">Яро ведёт диалог сам</div>
+        <div class="step-text">AI-помощник Яро общается с клиентом: помнит его пожелания, уточняет детали, поддерживает интерес. Живо, не как бот.</div>
+      </div>
+      <div class="step r d3">
+        <div class="step-num">03 / СИГНАЛ</div>
+        <div class="step-title">Ты звонишь в нужный момент</div>
+        <div class="step-text">Когда клиент "оживился" — написал несколько сообщений — ты получаешь уведомление. Самое время позвонить.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features-section">
+  <div class="wrap">
+    <p class="section-kicker r">ВОЗМОЖНОСТИ</p>
+    <h2 class="section-title r d1">Что умеет Агентура</h2>
+
+    <div class="features-grid">
+      <div class="feature-row r d1">
+        <div class="feature-icon">🧠</div>
+        <div>
+          <div class="feature-name">Помнит всё о клиенте</div>
+          <div class="feature-desc">Бюджет, район, тип жилья, предпочтения. Яро использует это в каждом разговоре — клиент чувствует что его помнят.</div>
+        </div>
+      </div>
+      <div class="feature-row r d2">
+        <div class="feature-icon">🔥</div>
+        <div>
+          <div class="feature-name">Детектор готовности</div>
+          <div class="feature-desc">Клиент написал 3+ сообщения за неделю? Значит созрел. Ты получаешь уведомление — и звонишь в нужный момент.</div>
+        </div>
+      </div>
+      <div class="feature-row r d3">
+        <div class="feature-icon">🏘️</div>
+        <div>
+          <div class="feature-name">Покупатели и продавцы</div>
+          <div class="feature-desc">Два режима: помогает покупателю в поиске или поддерживает продавца в ожидании. Яро знает разницу.</div>
+        </div>
+      </div>
+      <div class="feature-row r d4">
+        <div class="feature-icon">📁</div>
+        <div>
+          <div class="feature-name">Архив сделок</div>
+          <div class="feature-desc">Закрытые сделки хранятся с полной историей переписки. Удобно возвращаться и видеть путь клиента.</div>
+        </div>
+      </div>
+      <div class="feature-row r d1">
+        <div class="feature-icon">🤖</div>
+        <div>
+          <div class="feature-name">Проактивные сообщения</div>
+          <div class="feature-desc">Если клиент давно молчит — Яро сам напишет ему тёплое сообщение. Контакт не обрывается.</div>
+        </div>
+      </div>
+      <div class="feature-row r d2">
+        <div class="feature-icon">⚡</div>
+        <div>
+          <div class="feature-name">Работает в Telegram</div>
+          <div class="feature-desc">Никаких приложений и регистраций. Ты работаешь в Telegram, клиент — тоже. Настройка за 2 минуты.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="stats-strip">
+  <div class="stats-inner">
+    <div class="stat r">
+      <div class="stat-val">24<em>/7</em></div>
+      <div class="stat-lbl">Яро общается с клиентами без выходных и перерывов</div>
+    </div>
+    <div class="stat r d1">
+      <div class="stat-val">3–6<em>мес</em></div>
+      <div class="stat-lbl">цикл сделки — именно столько Агентура держит контакт</div>
+    </div>
+    <div class="stat r d2">
+      <div class="stat-val"><em>∞</em></div>
+      <div class="stat-lbl">клиентов ведётся параллельно — бот не устаёт</div>
+    </div>
+    <div class="stat r d3">
+      <div class="stat-val">2<em>мин</em></div>
+      <div class="stat-lbl">добавить клиента и отправить ему ссылку для входа</div>
+    </div>
+  </div>
+</div>
+
+<!-- PRICING -->
+<section class="pricing-section" id="pricing">
+  <div class="wrap">
+    <p class="section-kicker r">ТАРИФЫ</p>
+    <h2 class="section-title r d1">Простые цены. Без сюрпризов.</h2>
+    <p class="section-sub r d2">Первые 14 дней бесплатно — убедись что Агентура работает для тебя.</p>
+
+    <div class="pricing-grid r d3">
+      <div class="price-card">
+        <div class="price-name">СТАРТ</div>
+        <div class="price-val">1 990 <em>₽</em></div>
+        <div class="price-period">в месяц</div>
+        <ul class="price-features">
+          <li>До 15 активных клиентов</li>
+          <li>Покупатели и продавцы</li>
+          <li>Уведомления о горячих лидах</li>
+          <li>Архив сделок</li>
+          <li>Поддержка в Telegram</li>
+        </ul>
+        <a href="https://t.me/sbahmetev" target="_blank" class="btn-price-outline">Начать →</a>
+      </div>
+      <div class="price-card featured">
+        <div class="price-badge">ПОПУЛЯРНЫЙ</div>
+        <div class="price-name">ПРО</div>
+        <div class="price-val">3 990 <em>₽</em></div>
+        <div class="price-period">в месяц</div>
+        <ul class="price-features">
+          <li>До 50 активных клиентов</li>
+          <li>Покупатели и продавцы</li>
+          <li>Уведомления о горячих лидах</li>
+          <li>Архив сделок</li>
+          <li>Приоритетная поддержка</li>
+        </ul>
+        <a href="https://t.me/sbahmetev" target="_blank" class="btn-price">Начать →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2 class="cta-head r">Готов попробовать?</h2>
+  <p class="cta-sub r d1">Первые 14 дней бесплатно. Добавь первого клиента за 2 минуты и посмотри как Яро работает.</p>
+  <a href="https://t.me/sbahmetev" target="_blank" class="btn-hero r d2" style="font-size: 17px; padding: 16px 38px;">Написать в Telegram →</a>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>© 2026 Агентура · Разработка: <a href="https://t.me/sbahmetev">@sbahmetev</a></p>
+</footer>
+
+<script>
+  // Stars
+  const canvas = document.getElementById('stars-canvas');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+  function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+  function initStars() {
+    stars = [];
+    const n = Math.floor((canvas.width * canvas.height) / 7000);
+    for (let i = 0; i < n; i++) {
+      stars.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+        r: Math.random() * 1.2 + 0.2, a: Math.random(), speed: Math.random() * 0.004 + 0.001 });
+    }
+  }
+  function drawStars(t) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    stars.forEach(s => {
+      const alpha = 0.3 + 0.5 * Math.sin(t * s.speed + s.a * 100);
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(180,210,255,${alpha})`; ctx.fill();
+    });
+    requestAnimationFrame(drawStars);
+  }
+  resize(); initStars(); requestAnimationFrame(drawStars);
+  window.addEventListener('resize', () => { resize(); initStars(); });
+
+  // Scroll animations
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('vis'); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.r').forEach(el => io.observe(el));
+</script>
+</body>
+</html>
