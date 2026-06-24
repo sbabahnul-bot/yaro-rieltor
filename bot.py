@@ -16,6 +16,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "rieltor.db")
 
@@ -98,6 +99,12 @@ def init_db():
         )
     """)
     # Миграция: добавляем новые колонки если их нет (для существующей БД)
+    # Миграция таблицы realtors
+    for col, coltype in [("approved","INTEGER DEFAULT 0")]:
+        try:
+            conn.execute(f"ALTER TABLE realtors ADD COLUMN {col} {coltype}")
+        except Exception:
+            pass
     for col, coltype in [("role","TEXT DEFAULT 'buyer'"), ("address","TEXT"), ("area","TEXT"),
                          ("price","TEXT"), ("status","TEXT DEFAULT 'active'")]:
         try:
@@ -120,10 +127,20 @@ def ensure_realtor(user):
         exists = conn.execute("SELECT 1 FROM realtors WHERE realtor_id=?", (user.id,)).fetchone()
         if not exists:
             conn.execute(
-                "INSERT INTO realtors (realtor_id, username, name) VALUES (?,?,?)",
+                "INSERT INTO realtors (realtor_id, username, name, approved) VALUES (?,?,?,0)",
                 (user.id, user.username or "", user.full_name)
             )
             conn.commit()
+
+def is_approved(realtor_id):
+    with get_conn() as conn:
+        row = conn.execute("SELECT approved FROM realtors WHERE realtor_id=?", (realtor_id,)).fetchone()
+    return row and row[0] == 1
+
+def approve_realtor(realtor_id):
+    with get_conn() as conn:
+        conn.execute("UPDATE realtors SET approved=1 WHERE realtor_id=?", (realtor_id,))
+        conn.commit()
 
 def add_client(realtor_id, name, budget, district, rooms, notes=""):
     import secrets
@@ -267,6 +284,24 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # Иначе — регистрируем как риелтора
     ensure_realtor(user)
+    if not is_approved(user.id):
+        await update.message.reply_text(
+            f"Привет, {user.first_name}! 👋\n\n"
+            f"Твоя заявка на доступ к Агентуре отправлена.\n"
+            f"Как только тебя одобрят — придёт уведомление."
+        )
+        if ADMIN_ID:
+            username = f"@{user.username}" if user.username else "нет username"
+            await ctx.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"🆕 Новый риелтор хочет доступ:\n\n"
+                     f"Имя: {user.full_name}\n"
+                     f"Username: {username}\n"
+                     f"ID: {user.id}\n\n"
+                     f"Одобрить: /approve {user.id}\n"
+                     f"Отклонить: /reject {user.id}"
+            )
+        return
     await update.message.reply_text(
         f"Привет, {user.first_name}! 👋\n\n"
         f"Я Яро — твой AI-помощник для работы с клиентами.\n\n"
@@ -442,6 +477,66 @@ async def cmd_archive(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         lines.append(f"#{cid} {name} — {role_icon}\n   {params}\n   /chat {cid}")
     await update.message.reply_text("\n\n".join(lines))
 
+async def cmd_approve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    args = ctx.args
+    if not args:
+        await update.message.reply_text("Формат: /approve 123456789")
+        return
+    try:
+        target_id = int(args[0])
+    except ValueError:
+        await update.message.reply_text("ID должен быть числом.")
+        return
+    realtor = get_realtor(target_id)
+    if not realtor:
+        await update.message.reply_text("Риелтор не найден.")
+        return
+    approve_realtor(target_id)
+    await update.message.reply_text(f"✅ Риелтор {realtor[2]} одобрен.")
+    try:
+        await ctx.bot.send_message(
+            chat_id=target_id,
+            text=f"✅ Доступ открыт!\n\n"
+                 f"Добро пожаловать в Агентуру.\n\n"
+                 f"Команды:\n"
+                 f"/add Имя бюджет район тип — покупатель\n"
+                 f"/sell Имя цена адрес площадь тип — продавец\n"
+                 f"/clients — список клиентов\n"
+                 f"/help — подробная справка"
+        )
+    except Exception as e:
+        log.warning(f"Не удалось уведомить риелтора {target_id}: {e}")
+
+async def cmd_reject(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    args = ctx.args
+    if not args:
+        await update.message.reply_text("Формат: /reject 123456789")
+        return
+    try:
+        target_id = int(args[0])
+    except ValueError:
+        await update.message.reply_text("ID должен быть числом.")
+        return
+    realtor = get_realtor(target_id)
+    if not realtor:
+        await update.message.reply_text("Риелтор не найден.")
+        return
+    with get_conn() as conn:
+        conn.execute("DELETE FROM realtors WHERE realtor_id=?", (target_id,))
+        conn.commit()
+    await update.message.reply_text(f"❌ Риелтор {realtor[2]} отклонён и удалён.")
+    try:
+        await ctx.bot.send_message(
+            chat_id=target_id,
+            text="К сожалению, доступ не одобрен. Свяжитесь с администратором."
+        )
+    except Exception:
+        pass
+
 async def cmd_note(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     args = ctx.args
@@ -472,6 +567,11 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # Проверяем — риелтор ли это
     realtor = get_realtor(user.id)
     if realtor:
+        if not is_approved(user.id):
+            await update.message.reply_text(
+                "Твоя заявка ещё на рассмотрении. Ожидай уведомления."
+            )
+            return
         await update.message.reply_text(
             "Используй команды для управления клиентами.\n/help — список команд."
         )
@@ -572,6 +672,8 @@ def main():
     app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("archive", cmd_archive))
     app.add_handler(CommandHandler("note", cmd_note))
+    app.add_handler(CommandHandler("approve", cmd_approve))
+    app.add_handler(CommandHandler("reject", cmd_reject))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     scheduler = AsyncIOScheduler()
