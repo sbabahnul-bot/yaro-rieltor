@@ -320,11 +320,11 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📋 Команды риелтора:\n\n"
         "🔵 ПОКУПАТЕЛЬ:\n"
-        "/add Иван 5млн Советский 3к\n"
+        "/add Иван Петров 5млн Советский 3к\n"
         "  └ формат: имя | бюджет | район | тип\n"
         "  └ типы: 1к / 2к / 3к / студия / нежилое / офис\n\n"
         "🟠 ПРОДАВЕЦ:\n"
-        "/sell Мария 8млн Ленина_12 65м2 3к\n"
+        "/sell Мария Иванова 8млн Ленина_12 65м2 3к\n"
         "  └ формат: имя | цена | адрес | площадь | тип\n\n"
         "/clients — список активных клиентов\n"
         "/chat 3 — история переписки с клиентом #3\n"
@@ -334,6 +334,15 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "После /add или /sell получишь ссылку — отправь клиенту."
     )
 
+def parse_client_args(args):
+    """Имя клиента может быть из нескольких слов: оно идёт до первого слова, начинающегося с цифры (бюджет или цена).
+    Возвращает (имя, остальные_аргументы). Если слов-цифр нет, все слова считаются именем."""
+    args = [a for a in args if a]
+    for i, a in enumerate(args):
+        if a[0].isdigit():
+            return " ".join(args[:i]), args[i:]
+    return " ".join(args), []
+
 async def cmd_sell(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     ensure_realtor(user)
@@ -341,14 +350,20 @@ async def cmd_sell(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not args or len(args) < 1:
         await update.message.reply_text(
             "Формат: /sell Имя цена адрес площадь тип\n"
-            "Пример: /sell Мария 8млн Ленина_12 65м2 3к"
+            "Пример: /sell Мария Иванова 8млн Ленина_12 65м2 3к\n(имя можно из нескольких слов, цена начинается с цифры)"
         )
         return
-    name    = args[0]
-    price   = args[1] if len(args) > 1 else ""
-    address = args[2].replace("_", " ") if len(args) > 2 else ""
-    area    = args[3] if len(args) > 3 else ""
-    rooms   = args[4] if len(args) > 4 else ""
+    name, rest = parse_client_args(args)
+    if not name:
+        await update.message.reply_text(
+            "Сначала укажи имя, потом цену.\n"
+            "Пример: /sell Мария Иванова 8млн Ленина_12 65м2 3к"
+        )
+        return
+    price   = rest[0] if len(rest) > 0 else ""
+    address = rest[1].replace("_", " ") if len(rest) > 1 else ""
+    area    = rest[2] if len(rest) > 2 else ""
+    rooms   = rest[3] if len(rest) > 3 else ""
     token = add_seller(user.id, name, price, address, area, rooms)
     bot_info = await ctx.bot.get_me()
     invite_link = f"https://t.me/{bot_info.username}?start={token}"
@@ -365,13 +380,19 @@ async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not args or len(args) < 1:
         await update.message.reply_text(
             "Формат: /add Имя бюджет район тип\n"
-            "Пример: /add Иван 5млн Советский 3к"
+            "Пример: /add Иван Петров 5млн Советский 3к\n(имя можно из нескольких слов, бюджет начинается с цифры)"
         )
         return
-    name = args[0]
-    budget   = args[1] if len(args) > 1 else ""
-    district = args[2] if len(args) > 2 else ""
-    rooms    = args[3] if len(args) > 3 else ""
+    name, rest = parse_client_args(args)
+    if not name:
+        await update.message.reply_text(
+            "Сначала укажи имя, потом бюджет.\n"
+            "Пример: /add Иван Петров 5млн Советский 3к"
+        )
+        return
+    budget   = rest[0] if len(rest) > 0 else ""
+    district = rest[1] if len(rest) > 1 else ""
+    rooms    = rest[2] if len(rest) > 2 else ""
     token = add_client(user.id, name, budget, district, rooms)
     bot_info = await ctx.bot.get_me()
     invite_link = f"https://t.me/{bot_info.username}?start={token}"
