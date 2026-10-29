@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import logging
@@ -21,6 +22,7 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 DB_PATH = os.path.join(os.path.dirname(__file__), "rieltor.db")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
 YARO_BUYER = """Ты — Яро, персональный помощник в поиске недвижимости. Ты общаешься с клиентом риелтора.
@@ -117,6 +119,12 @@ def init_db():
 def get_conn():
     return sqlite3.connect(DB_PATH)
 
+def get_conn_rows():
+    """Соединение, где строки доступны и по номеру, и по имени колонки (в мигрированной БД порядок колонок не совпадает с CREATE TABLE)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 def get_realtor(realtor_id):
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM realtors WHERE realtor_id=?", (realtor_id,)).fetchone()
@@ -176,17 +184,17 @@ def get_clients(realtor_id, status="active"):
     return rows
 
 def get_client_by_token(token):
-    with get_conn() as conn:
+    with get_conn_rows() as conn:
         row = conn.execute("SELECT * FROM clients WHERE invite_token=?", (token,)).fetchone()
     return row
 
 def get_client_by_chat(chat_id):
-    with get_conn() as conn:
+    with get_conn_rows() as conn:
         row = conn.execute("SELECT * FROM clients WHERE chat_id=?", (chat_id,)).fetchone()
     return row
 
 def get_client_by_id(client_id):
-    with get_conn() as conn:
+    with get_conn_rows() as conn:
         row = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
     return row
 
@@ -217,13 +225,10 @@ def get_history(client_id):
 
 # ── Claude ────────────────────────────────────────────────────────────────────
 
-claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=45, max_retries=2)
 
 def build_params(client_row):
-    cols = ["id","realtor_id","chat_id","name","role","budget","district","rooms",
-            "address","area","price","notes","history","msg_count_week",
-            "last_active","last_proactive","invite_token","created_at"]
-    c = dict(zip(cols, client_row))
+    c = dict(client_row)
     parts = [f"Имя: {c['name']}"]
     if c.get("role") == "seller":
         if c.get("price"):   parts.append(f"Цена продажи: {c['price']}")
@@ -239,10 +244,7 @@ def build_params(client_row):
 
 def ask_claude(client_row, history):
     params = build_params(client_row)
-    cols = ["id","realtor_id","chat_id","name","role","budget","district","rooms",
-            "address","area","price","notes","history","msg_count_week",
-            "last_active","last_proactive","invite_token","created_at"]
-    c = dict(zip(cols, client_row))
+    c = dict(client_row)
     persona = YARO_SELLER if c.get("role") == "seller" else YARO_BUYER
     system = persona.format(client_params=params)
     response = claude.messages.create(
@@ -264,10 +266,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         client = get_client_by_token(token)
         if client:
             link_client(token, user.id)
-            cols = ["id","realtor_id","chat_id","name","role","budget","district","rooms",
-                    "address","area","price","notes","history","msg_count_week",
-                    "last_active","last_proactive","invite_token","created_at"]
-            c = dict(zip(cols, client))
+            c = dict(client)
             if c.get("role") == "seller":
                 await update.message.reply_text(
                     f"Привет, {c['name']}! 👋\n\nЯ Яро — помогаю риелтору держать тебя в курсе "
@@ -572,13 +571,16 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 "Твоя заявка ещё на рассмотрении. Ожидай уведомления."
             )
             return
-        await update.message.reply_text(
-            "Используй команды для управления клиентами.\n/help — список команд."
-        )
-        return
+        # Риелтор, который сам открыл клиентскую ссылку (тест), общается как клиент
+        if not get_client_by_chat(user.id):
+            await update.message.reply_text(
+                "Используй команды для управления клиентами.\n/help — список команд."
+            )
+            return
 
     # Клиентский режим
     client = get_client_by_chat(user.id)
+    log.info(f"[msg] user={user.id} client_found={bool(client)}")
     if not client:
         await update.message.reply_text(
             "Привет! Чтобы начать, перейди по ссылке которую прислал твой риелтор."
@@ -604,7 +606,7 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
-        reply = ask_claude(client, history)
+        reply = await asyncio.to_thread(ask_claude, client, history)
     except Exception as e:
         log.error(f"Claude error: {e}")
         reply = "Прости, что-то пошло не так. Напиши чуть позже!"
@@ -616,11 +618,9 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def send_proactive(bot):
     threshold = time.time() - 10 * 86400  # клиенты без контакта 10+ дней
-    with get_conn() as conn:
+    with get_conn_rows() as conn:
         rows = conn.execute(
-            """SELECT id, realtor_id, chat_id, name, budget, district, rooms, notes,
-                      history, msg_count_week, last_active, last_proactive, invite_token, created_at
-               FROM clients
+            """SELECT * FROM clients
                WHERE chat_id IS NOT NULL
                  AND last_proactive < ?
                  AND last_active < ?""",
@@ -635,8 +635,10 @@ async def send_proactive(bot):
             history = get_history(client_id)
             history.append({"role": "user", "content": f"[Это автоматический check-in. Напиши {name} тёплое короткое сообщение чтобы узнать как дела с поиском квартиры. Не давить, просто живое участие.]"})
             params = build_params(client)
-            system = YARO_PERSONA.format(client_params=params)
-            response = claude.messages.create(
+            persona = YARO_SELLER if client["role"] == "seller" else YARO_BUYER
+            system = persona.format(client_params=params)
+            response = await asyncio.to_thread(
+                claude.messages.create,
                 model="claude-sonnet-4-6",
                 max_tokens=256,
                 system=system,
@@ -661,7 +663,15 @@ def reset_weekly_counts():
 
 def main():
     init_db()
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .connect_timeout(30)
+        .read_timeout(30)
+        .write_timeout(30)
+        .pool_timeout(30)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
@@ -682,7 +692,7 @@ def main():
     scheduler.start()
 
     log.info("Яро.Риелтор запущен")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True, read_timeout=30, write_timeout=30, connect_timeout=30)
 
 if __name__ == "__main__":
     main()
