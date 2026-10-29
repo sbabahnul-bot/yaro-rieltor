@@ -3,3 +3,7 @@
 bot.log
 __pycache__/
 *.pyc
+
+# резервные копии
+bot.py.bak*
+*.db.bak*
