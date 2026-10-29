@@ -337,10 +337,14 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 def parse_client_args(args):
     """Имя клиента может быть из нескольких слов: оно идёт до первого слова, начинающегося с цифры (бюджет или цена).
     Возвращает (имя, остальные_аргументы). Если слов-цифр нет, все слова считаются именем."""
+    price_units = {"млн", "млрд", "тыс", "тысяч", "т.р", "тр", "руб", "₽", "миллионов", "миллиона"}
     args = [a for a in args if a]
     for i, a in enumerate(args):
         if a[0].isdigit():
-            return " ".join(args[:i]), args[i:]
+            rest = args[i:]
+            if len(rest) > 1 and rest[1].lower().rstrip(".") in price_units:
+                rest = [rest[0] + " " + rest[1]] + rest[2:]  # «15 млн» с пробелом считаем одной ценой
+            return " ".join(args[:i]), rest
     return " ".join(args), []
 
 async def cmd_sell(update: Update, ctx: ContextTypes.DEFAULT_TYPE):

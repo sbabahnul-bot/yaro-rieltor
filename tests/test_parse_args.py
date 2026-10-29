@@ -41,6 +41,16 @@ class ParseClientArgs(unittest.TestCase):
     def test_extra_spaces_and_name_with_digit_inside_kept(self):
         self.assertEqual(self.parse(["Анна-2", "7млн"]), ("Анна-2", ["7млн"]))
 
+    def test_price_with_unit_after_space_is_glued(self):
+        self.assertEqual(self.parse(["Сергей", "Бахметьев", "15", "млн", "Словцова_10", "65м2", "3к"]),
+                         ("Сергей Бахметьев", ["15 млн", "Словцова_10", "65м2", "3к"]))
+        self.assertEqual(self.parse(["Иван", "5", "млн.", "Советский"]), ("Иван", ["5 млн.", "Советский"]))
+        self.assertEqual(self.parse(["Ольга", "800", "тыс", "Ленина_1"]), ("Ольга", ["800 тыс", "Ленина_1"]))
+
+    def test_unit_word_not_glued_when_it_is_not_a_unit(self):
+        self.assertEqual(self.parse(["Иван", "5млн", "Советский"]), ("Иван", ["5млн", "Советский"]))
+        self.assertEqual(self.parse(["Иван", "65", "Советский"]), ("Иван", ["65", "Советский"]))
+
 
 if __name__ == "__main__":
     unittest.main()
